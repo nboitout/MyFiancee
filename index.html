@@ -62,11 +62,15 @@
   canvas {
     image-rendering: pixelated;
     filter: drop-shadow(0 0 30px rgba(100, 220, 255, 0.4));
+    max-width: 95vw;
+    max-height: 70vh;
+    width: auto;
+    height: auto;
   }
 
   .subtitle {
     font-family: 'Press Start 2P', monospace;
-    font-size: 9px;
+    font-size: clamp(6px, 2vw, 9px);
     color: #ff6b9d;
     letter-spacing: 3px;
     text-transform: uppercase;
@@ -246,9 +250,9 @@ const COLORS = [
   '#f00000', // red   - Z
 ];
 
-const BLOCK = 14;   // pixels per cell
 const GAP   = 1;    // gap between cells
 const LETTER_GAP = 2; // gap between letters in cells
+// BLOCK size computed after we know maxCols (set below)
 
 // Build the grid from font bitmaps
 function buildGrid(chars) {
@@ -282,11 +286,15 @@ function buildGrid(chars) {
 const g1 = buildGrid(LINE1);
 const g2 = buildGrid(LINE2);
 const maxCols = Math.max(g1.cols, g2.cols);
+const ROWS_TOTAL = g1.rows + 2 + g2.rows; // 7 + 2 gap + 7 = 16
+
+// Compute BLOCK size to fit screen with padding
+const maxW = Math.min(window.innerWidth * 0.92, window.innerHeight * 0.72 * (maxCols / ROWS_TOTAL));
+const BLOCK = Math.max(6, Math.floor((maxW - maxCols * GAP) / maxCols));
 
 // Setup canvas
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const ROWS_TOTAL = g1.rows + 2 + g2.rows; // 7 + 2 gap + 7 = 16
 const W = maxCols * (BLOCK + GAP);
 const H = ROWS_TOTAL * (BLOCK + GAP);
 canvas.width  = W;
