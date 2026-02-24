@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Я скучаю по тебе</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0f;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 3px,
+      rgba(0,0,0,0.15) 3px,
+      rgba(0,0,0,0.15) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* Falling background blocks */
+  .bg-block {
+    position: fixed;
+    width: 20px;
+    height: 20px;
+    opacity: 0.07;
+    animation: fall linear infinite;
+  }
+
+  @keyframes fall {
+    from { transform: translateY(-40px); }
+    to { transform: translateY(110vh); }
+  }
+
+  .canvas-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+
+  canvas {
+    image-rendering: pixelated;
+    filter: drop-shadow(0 0 30px rgba(100, 220, 255, 0.4));
+  }
+
+  .subtitle {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: #ff6b9d;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: fadeIn 1s ease 3s forwards;
+    text-shadow: 0 0 10px rgba(255, 107, 157, 0.8);
+  }
+
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+
+  /* Score display */
+  .score {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: #555;
+    letter-spacing: 2px;
+    margin-top: 8px;
+    opacity: 0;
+    animation: fadeIn 1s ease 4s forwards;
+  }
+</style>
+</head>
+<body>
+
+<div class="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div class="subtitle">я скучаю по тебе</div>
+  <div class="score">SCORE: &lt;3</div>
+</div>
+
+<script>
+// ── Tetris pixel font for Cyrillic ─────────────────────────────────────────
+// Each letter is a 5×7 bitmap (1 = filled, 0 = empty), columns packed as array of rows
+const FONT = {
+  'Я': [
+    [1,1,1,1],
+    [1,0,0,1],
+    [1,1,1,1],
+    [1,1,0,0],
+    [1,0,1,0],
+    [1,0,0,1],
+    [1,0,0,1],
+  ],
+  ' ': [
+    [0,0],
+    [0,0],
+    [0,0],
+    [0,0],
+    [0,0],
+    [0,0],
+    [0,0],
+  ],
+  'С': [
+    [0,1,1,1],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,0,0,0],
+    [0,1,1,1],
+  ],
+  'К': [
+    [1,0,0,1],
+    [1,0,1,0],
+    [1,1,0,0],
+    [1,1,0,0],
+    [1,0,1,0],
+    [1,0,0,1],
+    [1,0,0,1],
+  ],
+  'У': [
+    [1,0,0,1],
+    [1,0,0,1],
+    [0,1,0,1],
+    [0,1,1,0],
+    [0,0,1,0],
+    [0,1,0,0],
+    [1,0,0,0],
+  ],
+  'Ч': [
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,1,1,1],
+    [0,0,0,1],
+    [0,0,0,1],
+    [0,0,0,1],
+    [0,0,0,1],
+  ],
+  'А': [
+    [0,1,1,0],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,1,1,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+  ],
+  'Ю': [
+    [1,0,1,1,1],
+    [1,0,1,0,1],
+    [1,0,1,0,1],
+    [1,1,1,0,1],
+    [1,0,1,0,1],
+    [1,0,1,0,1],
+    [1,0,1,1,1],
+  ],
+  'П': [
+    [1,1,1,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+  ],
+  'О': [
+    [0,1,1,0],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [0,1,1,0],
+  ],
+  'Т': [
+    [1,1,1,1,1],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+  ],
+  'Е': [
+    [1,1,1,1],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,1,1,0],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,1,1,1],
+  ],
+  'Б': [
+    [1,1,1,1],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,1,1,0],
+    [1,0,0,1],
+    [1,0,0,1],
+    [0,1,1,0],
+  ],
+  'Е2': [
+    [1,1,1,1],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,1,1,0],
+    [1,0,0,0],
+    [1,0,0,0],
+    [1,1,1,1],
+  ],
+};
+
+// Two lines of text
+const LINE1 = ['Я', ' ', 'С', 'К', 'У', 'Ч', 'А', 'Ю'];
+const LINE2 = ['П', 'О', ' ', 'Т', 'Е', 'Б', 'Е'];
+
+// Tetromino colors
+const COLORS = [
+  '#00f0f0', // cyan  - I
+  '#f0a000', // orange - L
+  '#0000f0', // blue  - J
+  '#f0f000', // yellow - O
+  '#00f000', // green - S
+  '#a000f0', // purple - T
+  '#f00000', // red   - Z
+];
+
+const BLOCK = 14;   // pixels per cell
+const GAP   = 1;    // gap between cells
+const LETTER_GAP = 2; // gap between letters in cells
+
+// Build the grid from font bitmaps
+function buildGrid(chars) {
+  let cols = 0;
+  for (const ch of chars) {
+    const bmp = FONT[ch];
+    cols += bmp[0].length + LETTER_GAP;
+  }
+  cols -= LETTER_GAP;
+
+  const rows = 7;
+  const grid = Array.from({length: rows}, () => new Array(cols).fill(0));
+  const colorGrid = Array.from({length: rows}, () => new Array(cols).fill(null));
+
+  let x = 0;
+  for (const ch of chars) {
+    const bmp = FONT[ch];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < bmp[0].length; c++) {
+        if (bmp[r][c]) {
+          grid[r][x + c] = 1;
+          colorGrid[r][x + c] = COLORS[Math.floor(Math.random() * COLORS.length)];
+        }
+      }
+    }
+    x += bmp[0].length + LETTER_GAP;
+  }
+  return { grid, colorGrid, cols, rows };
+}
+
+const g1 = buildGrid(LINE1);
+const g2 = buildGrid(LINE2);
+const maxCols = Math.max(g1.cols, g2.cols);
+
+// Setup canvas
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const ROWS_TOTAL = g1.rows + 2 + g2.rows; // 7 + 2 gap + 7 = 16
+const W = maxCols * (BLOCK + GAP);
+const H = ROWS_TOTAL * (BLOCK + GAP);
+canvas.width  = W;
+canvas.height = H;
+
+// Build combined visible grid
+function buildCombined() {
+  const rows = ROWS_TOTAL;
+  const grid = Array.from({length: rows}, () => new Array(maxCols).fill(0));
+  const colorGrid = Array.from({length: rows}, () => new Array(maxCols).fill(null));
+
+  const off1 = Math.floor((maxCols - g1.cols) / 2);
+  const off2 = Math.floor((maxCols - g2.cols) / 2);
+
+  for (let r = 0; r < g1.rows; r++)
+    for (let c = 0; c < g1.cols; c++) if (g1.grid[r][c]) {
+      grid[r][off1 + c] = 1;
+      colorGrid[r][off1 + c] = g1.colorGrid[r][c];
+    }
+
+  for (let r = 0; r < g2.rows; r++)
+    for (let c = 0; c < g2.cols; c++) if (g2.grid[r][c]) {
+      const tr = g1.rows + 2 + r;
+      grid[tr][off2 + c] = 1;
+      colorGrid[tr][off2 + c] = g2.colorGrid[r][c];
+    }
+
+  return { grid, colorGrid };
+}
+
+const combined = buildCombined();
+
+// Animate: blocks fall from top, settle
+const TOTAL_CELLS = combined.grid.flat().filter(Boolean).length;
+let revealed = 0;
+const cellOrder = [];
+for (let r = 0; r < ROWS_TOTAL; r++)
+  for (let c = 0; c < maxCols; c++)
+    if (combined.grid[r][c]) cellOrder.push([r, c]);
+
+// Shuffle per column so each column rains down
+cellOrder.sort((a, b) => a[0] - b[0] + (a[1] - b[1]) * 0.001);
+
+const revealedSet = new Set();
+const fallingBlocks = []; // {r, c, y (current top in pixels), color}
+
+// Start a new falling block every N ms
+const INTERVAL = 60;
+let cellIdx = 0;
+
+function spawnNext() {
+  if (cellIdx >= cellOrder.length) return;
+  const [r, c] = cellOrder[cellIdx++];
+  fallingBlocks.push({
+    r, c,
+    y: -BLOCK,
+    targetY: r * (BLOCK + GAP),
+    color: combined.colorGrid[r][c],
+    speed: 4 + Math.random() * 4,
+  });
+}
+
+let lastSpawn = 0;
+let done = false;
+
+function draw(ts) {
+  ctx.clearRect(0, 0, W, H);
+
+  // Spawn
+  if (!done && ts - lastSpawn > INTERVAL) {
+    spawnNext();
+    lastSpawn = ts;
+  }
+
+  // Draw settled blocks
+  for (const key of revealedSet) {
+    const [r, c] = key.split(',').map(Number);
+    drawBlock(ctx, c * (BLOCK + GAP), r * (BLOCK + GAP), combined.colorGrid[r][c], 1.0);
+  }
+
+  // Update & draw falling blocks
+  for (let i = fallingBlocks.length - 1; i >= 0; i--) {
+    const b = fallingBlocks[i];
+    b.y += b.speed;
+    if (b.y >= b.targetY) {
+      // settle
+      revealedSet.add(`${b.r},${b.c}`);
+      fallingBlocks.splice(i, 1);
+    } else {
+      drawBlock(ctx, b.c * (BLOCK + GAP), b.y, b.color, 0.9);
+    }
+  }
+
+  // Check done
+  if (cellIdx >= cellOrder.length && fallingBlocks.length === 0 && !done) {
+    done = true;
+    startPulse();
+  }
+
+  if (!done || pulseActive) requestAnimationFrame(draw);
+}
+
+let pulseActive = false;
+let pulseStart = 0;
+
+function startPulse() {
+  pulseActive = true;
+  requestAnimationFrame(pulse);
+}
+
+function pulse(ts) {
+  if (!pulseStart) pulseStart = ts;
+  const t = (ts - pulseStart) / 1000;
+  ctx.clearRect(0, 0, W, H);
+  const glow = 0.7 + 0.3 * Math.sin(t * 2);
+  for (const key of revealedSet) {
+    const [r, c] = key.split(',').map(Number);
+    drawBlock(ctx, c * (BLOCK + GAP), r * (BLOCK + GAP), combined.colorGrid[r][c], glow);
+  }
+  requestAnimationFrame(pulse);
+}
+
+function drawBlock(ctx, x, y, color, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Main fill
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 1, y + 1, BLOCK - 2, BLOCK - 2);
+
+  // Light edge
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(x + 1, y + 1, BLOCK - 2, 2);
+  ctx.fillRect(x + 1, y + 1, 2, BLOCK - 2);
+
+  // Dark edge
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(x + 1, y + BLOCK - 3, BLOCK - 2, 2);
+  ctx.fillRect(x + BLOCK - 3, y + 1, 2, BLOCK - 2);
+
+  // Glow
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 2, y + 2, BLOCK - 4, BLOCK - 4);
+
+  ctx.restore();
+}
+
+// Spawn background falling blocks
+for (let i = 0; i < 30; i++) {
+  const div = document.createElement('div');
+  div.className = 'bg-block';
+  div.style.left = Math.random() * 100 + 'vw';
+  div.style.top = Math.random() * 100 + 'vh';
+  div.style.width = div.style.height = (10 + Math.random() * 20) + 'px';
+  div.style.background = COLORS[Math.floor(Math.random() * COLORS.length)];
+  div.style.animationDuration = (4 + Math.random() * 8) + 's';
+  div.style.animationDelay = (-Math.random() * 8) + 's';
+  document.body.appendChild(div);
+}
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
